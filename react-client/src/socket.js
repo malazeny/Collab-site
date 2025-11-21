@@ -1,6 +1,6 @@
 import { io } from "socket.io-client";
 
-// Replace this with your Render backend URL:
-export const socket = io("http://localhost:5173", {
+export const socket = io("http://localhost:3000", {
   transports: ["websocket"],
+  autoConnect: true,
 });

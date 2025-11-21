@@ -1,27 +1,59 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
-import Canvas from './Components/Canvas.jsx'
+import { useEffect, useState } from "react";
+import { socket } from "./socket";
+import Canvas from "./Components/Canvas";
 
 export default function App() {
-	//use react states to keep track of our brush color and size
   const [brushColor, setBrushColor] = useState("#000000");
   const [brushSize, setBrushSize] = useState(4);
 
-  return (
-    <div style={{ padding: "20px" }}>
-      <h1>Collaborative Drawing (React + Socket.io)</h1>
+  const [segmentIndex, setSegmentIndex] = useState(null);
+  const [numSegments, setNumSegments] = useState(4);
+  const [revealed, setRevealed] = useState(false);
 
-      <div style={{ marginBottom: "15px" }}>
-        <label>Color: </label>
+  const [clearFlag, setClearFlag] = useState(false);
+
+  useEffect(() => {
+    function handleConnect() {
+      console.log("Socket connected! ID:", socket.id);
+      socket.emit("joinGame");
+    }
+  
+    socket.on("connect", handleConnect);
+  
+    socket.on("assignedSegment", ({ segment, total }) => {
+      setSegmentIndex(segment);
+      setNumSegments(total);
+    });
+  
+    socket.on("reveal", () => setRevealed(true));
+    socket.on("clear", () => setClearFlag((f) => !f));
+  
+    return () => {
+      socket.off("connect", handleConnect);
+      socket.off("assignedSegment");
+      socket.off("reveal");
+      socket.off("clear");
+    };
+  }, []);
+
+  const handleReveal = () => {
+    socket.emit("requestReveal");
+  };
+
+  const handleClear = () => {
+    socket.emit("clear");
+    setClearFlag((f) => !f);
+    setRevealed(false);
+  };
+
+  return (
+    <div className="app">
+      <div className="toolbar">
         <input
           type="color"
           value={brushColor}
           onChange={(e) => setBrushColor(e.target.value)}
         />
-
-        <label style={{ marginLeft: "15px" }}>Brush Size: </label>
         <input
           type="range"
           min="1"
@@ -29,10 +61,24 @@ export default function App() {
           value={brushSize}
           onChange={(e) => setBrushSize(Number(e.target.value))}
         />
-        <span style={{ marginLeft: "8px" }}>{brushSize}px</span>
+        <button onClick={handleReveal}>Reveal</button>
+        <button onClick={handleClear}>Clear</button>
       </div>
 
-      <Canvas brushColor={brushColor} brushSize={brushSize} />
+      <p style={{ margin: "10px 0", color: "black" }}>
+        {segmentIndex == null
+          ? "Connecting..."
+          : `You are drawing in section ${segmentIndex + 1} of ${numSegments}`}
+      </p>
+
+      <Canvas
+        brushColor={brushColor}
+        brushSize={brushSize}
+        segmentIndex={segmentIndex}
+        numSegments={numSegments}
+        revealed={revealed}
+        clearFlag={clearFlag}
+      />
     </div>
   );
 }

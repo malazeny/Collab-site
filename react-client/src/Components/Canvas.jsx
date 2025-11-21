@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import { socket } from "../socket";
+import { socket } from "../socket.js";
 
-export default function Canvas({ brushColor, brushSize }) {
+export default function Canvas({
+  brushColor,
+  brushSize,
+  segmentIndex,
+  numSegments,
+  revealed,
+  clearFlag,
+}) {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [prevPos, setPrevPos] = useState(null);
 
-  // Setup canvas context
   useEffect(() => {
     const canvas = canvasRef.current;
     canvas.width = window.innerWidth * 0.8;
@@ -20,11 +26,21 @@ export default function Canvas({ brushColor, brushSize }) {
     ctxRef.current = ctx;
   }, []);
 
-  // Handle incoming draw events
+  const getSegmentBounds = () => {
+    const canvas = canvasRef.current;
+    if (!canvas || segmentIndex == null || !numSegments) return null;
+
+    const segHeight = canvas.height / numSegments;
+    const yStart = segHeight * segmentIndex;
+    const yEnd = yStart + segHeight;
+    return { yStart, yEnd };
+  };
+
   useEffect(() => {
-    socket.on("draw", (data) => {
+    const handleDraw = (data) => {
       const { x1, y1, x2, y2, color, size } = data;
       const ctx = ctxRef.current;
+      if (!ctx) return;
 
       ctx.strokeStyle = color;
       ctx.lineWidth = size;
@@ -33,14 +49,28 @@ export default function Canvas({ brushColor, brushSize }) {
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
-    });
+    };
 
-    return () => socket.off("draw");
+    socket.on("draw", handleDraw);
+    return () => socket.off("draw", handleDraw);
   }, []);
 
-  // Drawing handlers
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }, [clearFlag]);
+
   const startDrawing = (e) => {
     const { offsetX, offsetY } = e.nativeEvent;
+    const bounds = getSegmentBounds();
+
+
+    if (bounds && !revealed) {
+      if (offsetY < bounds.yStart || offsetY > bounds.yEnd) return;
+    }
+
     setIsDrawing(true);
     setPrevPos({ x: offsetX, y: offsetY });
   };
@@ -54,18 +84,22 @@ export default function Canvas({ brushColor, brushSize }) {
     if (!isDrawing || !prevPos) return;
 
     const { offsetX, offsetY } = e.nativeEvent;
+    const bounds = getSegmentBounds();
+    if (bounds && !revealed) {
+      if (offsetY < bounds.yStart || offsetY > bounds.yEnd) return;
+    }
+
     const ctx = ctxRef.current;
+    if (!ctx) return;
 
     ctx.strokeStyle = brushColor;
     ctx.lineWidth = brushSize;
 
-    // Draw locally
     ctx.beginPath();
     ctx.moveTo(prevPos.x, prevPos.y);
     ctx.lineTo(offsetX, offsetY);
     ctx.stroke();
 
-    // Emit draw event
     socket.emit("draw", {
       x1: prevPos.x,
       y1: prevPos.y,
@@ -88,6 +122,8 @@ export default function Canvas({ brushColor, brushSize }) {
       style={{
         border: "1px solid #999",
         cursor: "crosshair",
+        display: "block",
+        margin: "0 auto",
       }}
     />
   );

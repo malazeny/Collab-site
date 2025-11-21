@@ -1,35 +1,30 @@
-import express from "express";
-import http from "http";
-import { Server } from "socket.io";
-
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
-});
-
-//app.use(express.static("public"));
+const MAX_SEGMENTS = 4;
+let activeSegments = new Set();
 
 io.on("connection", (socket) => {
-    console.log("User connected:", socket.id);
+  console.log("User connected:", socket.id);
 
-    socket.on("draw", (data) => {
-        socket.broadcast.emit("draw", data);
-    });
+  let segment = 0;
+  while (activeSegments.has(segment)) {
+    segment++;
+    if (segment >= MAX_SEGMENTS) segment = 0;
+  }
 
-    socket.on("clear", () => {
-        socket.broadcast.emit("clear");
-    });
+  activeSegments.add(segment);
 
-    socket.on("disconnect", () => {
-        console.log("User disconnected:", socket.id);
-    });
-});
+  console.log(`Assigned segment ${segment} to ${socket.id}`);
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  socket.emit("assignedSegment", {
+    segment,
+    total: MAX_SEGMENTS,
+  });
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+    activeSegments.delete(segment);
+  });
+
+  socket.on("draw", (data) => socket.broadcast.emit("draw", data));
+  socket.on("clear", () => socket.broadcast.emit("clear"));
+  socket.on("requestReveal", () => io.emit("reveal"));
 });
