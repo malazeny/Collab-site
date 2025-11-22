@@ -65,10 +65,10 @@ export default function Canvas({
       const yStart = segHeight * segmentIndex;
 
       ctx.save();
-      ctx.fillStyle = "rgba(255, 230, 0, 0.25)";
+      ctx.fillStyle = "rgba(233, 231, 231, 0.25)";
       ctx.fillRect(0, yStart, canvas.width, segHeight);
 
-      ctx.strokeStyle = "rgba(255, 200, 0, 1)";
+      ctx.strokeStyle = "rgb(186, 186, 156)";
       ctx.lineWidth = 4;
       ctx.strokeRect(0, yStart, canvas.width, segHeight);
       ctx.restore();

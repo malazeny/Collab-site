@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { socket } from "./socket";
 import Canvas from "./Components/Canvas";
+import "./App.css";
 
 export default function App() {
   const [brushColor, setBrushColor] = useState("#000000");
@@ -68,12 +69,12 @@ export default function App() {
         <button onClick={handleClear}>Clear</button>
       </div>
 
-      <p style={{ margin: "10px 0", color: "black" }}>
+      <p className = "section-label">
         {segmentIndex == null
           ? "Connecting..."
           : `You are drawing the ${sectionNames[segmentIndex]}`}
       </p>
-
+      <div className = "canvas-wrapper">
       <Canvas
         brushColor={brushColor}
         brushSize={brushSize}
@@ -82,6 +83,7 @@ export default function App() {
         revealed={revealed}
         clearFlag={clearFlag}
       />
+    </div>
     </div>
   );
 }
