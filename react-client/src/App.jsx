@@ -4,13 +4,15 @@ import Canvas from "./Components/Canvas";
 
 export default function App() {
   const [brushColor, setBrushColor] = useState("#000000");
-  const [brushSize, setBrushSize] = useState(4);
+  const [brushSize, setBrushSize] = useState(3);
 
   const [segmentIndex, setSegmentIndex] = useState(null);
-  const [numSegments, setNumSegments] = useState(4);
+  const [numSegments, setNumSegments] = useState(3);
   const [revealed, setRevealed] = useState(false);
 
   const [clearFlag, setClearFlag] = useState(false);
+
+  const sectionNames = ["Head", "Body", "Legs"];
 
   useEffect(() => {
     function handleConnect() {
@@ -21,6 +23,7 @@ export default function App() {
     socket.on("connect", handleConnect);
   
     socket.on("assignedSegment", ({ segment, total }) => {
+      console.log("Segment received:", segment, "total:", total);
       setSegmentIndex(segment);
       setNumSegments(total);
     });
@@ -68,7 +71,7 @@ export default function App() {
       <p style={{ margin: "10px 0", color: "black" }}>
         {segmentIndex == null
           ? "Connecting..."
-          : `You are drawing in section ${segmentIndex + 1} of ${numSegments}`}
+          : `You are drawing the ${sectionNames[segmentIndex]}`}
       </p>
 
       <Canvas
