@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { socket } from "./socket";
 import Canvas from "./Components/Canvas";
+import Stickers from "./Components/Stickers";
 import "./App.css";
 
 export default function App() {
@@ -10,28 +11,29 @@ export default function App() {
   const [segmentIndex, setSegmentIndex] = useState(null);
   const [numSegments, setNumSegments] = useState(3);
   const [revealed, setRevealed] = useState(false);
-
   const [clearFlag, setClearFlag] = useState(false);
 
   const sectionNames = ["Head", "Body", "Legs"];
+
+  const canvasRef = useRef(null);
 
   useEffect(() => {
     function handleConnect() {
       console.log("Socket connected! ID:", socket.id);
       socket.emit("joinGame");
     }
-  
+
     socket.on("connect", handleConnect);
-  
+
     socket.on("assignedSegment", ({ segment, total }) => {
       console.log("Segment received:", segment, "total:", total);
       setSegmentIndex(segment);
       setNumSegments(total);
     });
-  
+
     socket.on("reveal", () => setRevealed(true));
     socket.on("clear", () => setClearFlag((f) => !f));
-  
+
     return () => {
       socket.off("connect", handleConnect);
       socket.off("assignedSegment");
@@ -40,10 +42,7 @@ export default function App() {
     };
   }, []);
 
-  const handleReveal = () => {
-    socket.emit("requestReveal");
-  };
-
+  const handleReveal = () => socket.emit("requestReveal");
   const handleClear = () => {
     socket.emit("clear");
     setClearFlag((f) => !f);
@@ -58,6 +57,7 @@ export default function App() {
           value={brushColor}
           onChange={(e) => setBrushColor(e.target.value)}
         />
+
         <input
           type="range"
           min="1"
@@ -65,25 +65,33 @@ export default function App() {
           value={brushSize}
           onChange={(e) => setBrushSize(Number(e.target.value))}
         />
+
         <button onClick={handleReveal}>Reveal</button>
         <button onClick={handleClear}>Clear</button>
       </div>
 
-      <p className = "section-label">
+      <p className="section-label">
         {segmentIndex == null
           ? "Connecting..."
           : `You are drawing the ${sectionNames[segmentIndex]}`}
       </p>
-      <div className = "canvas-wrapper">
-      <Canvas
-        brushColor={brushColor}
-        brushSize={brushSize}
-        segmentIndex={segmentIndex}
-        numSegments={numSegments}
-        revealed={revealed}
-        clearFlag={clearFlag}
-      />
-    </div>
+
+
+
+      <div className = "workspace">
+      <div className="canvas-wrapper">
+        <Canvas
+          ref={canvasRef}
+          brushColor={brushColor}
+          brushSize={brushSize}
+          segmentIndex={segmentIndex}
+          numSegments={numSegments}
+          revealed={revealed}
+          clearFlag={clearFlag}
+        />
+      </div>
+      <Stickers onAdd={(src) => canvasRef.current.addSticker(src)} />
+      </div>
     </div>
   );
 }

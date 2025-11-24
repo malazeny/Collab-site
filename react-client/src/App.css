@@ -115,3 +115,14 @@ canvas {
     justify-content: center;
   }
 }
+
+.workspace {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 25px;
+  margin-top: 20px;
+  width: 100%;
+  justify-content: center;
+}
+

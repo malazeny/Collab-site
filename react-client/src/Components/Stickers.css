@@ -1,0 +1,29 @@
+.stickers-panel {
+    width: 220px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 12px;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+    height: fit-content;
+    font-family: "Typewriter", monospace;
+    position: sticky;
+    top: 30px;
+}
+  
+.stickers-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  
+  .sticker-icon {
+    width: 55px;
+    height: 55px;
+    cursor: grab;
+    transition: transform 0.15s ease;
+  }
+  
+  .sticker-icon:hover {
+    transform: scale(1.15);
+  }
+  

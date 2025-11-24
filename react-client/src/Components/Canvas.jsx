@@ -1,23 +1,38 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { socket } from "../socket.js";
 
-export default function Canvas({
-  brushColor,
-  brushSize,
-  segmentIndex,
-  numSegments,
-  revealed,
-  clearFlag,
-}) {
+const Canvas = forwardRef(function Canvas(
+  { brushColor, brushSize, segmentIndex, numSegments, revealed, clearFlag },
+  ref
+) {
+
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
+
   const [isDrawing, setIsDrawing] = useState(false);
   const [prevPos, setPrevPos] = useState(null);
 
-  // store all strokes locally so we can redraw after masking
+  // strokes + stickers stored locally
   const strokesRef = useRef([]);
+  const stickersRef = useRef([]);
 
-  // Setup canvas
+  // dragging state
+  const [draggingSticker, setDraggingSticker] = useState(null);
+
+  // expose addSticker() to parent (App.jsx)
+  useImperativeHandle(ref, () => ({
+    addSticker: (src) => {
+      stickersRef.current.push({
+        id: crypto.randomUUID(),
+        src,
+        x: 80,
+        y: 80,
+      });
+      redraw();
+    }
+  }));
+
+  // Setup canvas once
   useEffect(() => {
     const canvas = canvasRef.current;
     canvas.width = window.innerWidth * 0.4;
@@ -30,17 +45,17 @@ export default function Canvas({
     ctxRef.current = ctx;
   }, []);
 
+  // decides where user can draw
   const getSegmentBounds = () => {
     const canvas = canvasRef.current;
     if (!canvas || segmentIndex == null || !numSegments) return null;
 
     const segHeight = canvas.height / numSegments;
     const yStart = segHeight * segmentIndex;
-    const yEnd = yStart + segHeight;
-    return { yStart, yEnd };
+    return { yStart, yEnd: yStart + segHeight };
   };
 
-  // Redraw everything: strokes → highlight → mask
+  // redraw everything
   const redraw = () => {
     const canvas = canvasRef.current;
     const ctx = ctxRef.current;
@@ -48,18 +63,26 @@ export default function Canvas({
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // 1. Draw all strokes
-    ctx.globalCompositeOperation = "source-over";
-    for (const s of strokesRef.current) {
+    // --- 1. DRAW ALL STROKES ---
+    strokesRef.current.forEach((s) => {
       ctx.strokeStyle = s.color;
       ctx.lineWidth = s.size;
       ctx.beginPath();
       ctx.moveTo(s.x1, s.y1);
       ctx.lineTo(s.x2, s.y2);
       ctx.stroke();
-    }
+    });
 
-    // 2. Draw highlight only in my section
+    // --- 2. DRAW STICKERS ---
+    stickersRef.current.forEach((sticker) => {
+      const img = new Image();
+      img.src = sticker.src;
+      img.onload = () => {
+        ctx.drawImage(img, sticker.x - 40, sticker.y - 40, 80, 80);
+      };
+    });
+
+    // --- 3. HIGHLIGHT SECTION ---
     if (!revealed && segmentIndex != null) {
       const segHeight = canvas.height / numSegments;
       const yStart = segHeight * segmentIndex;
@@ -74,7 +97,7 @@ export default function Canvas({
       ctx.restore();
     }
 
-    // 3. Draw mask LAST
+    // --- 4. MASK OTHER SECTIONS ---
     if (!revealed && segmentIndex != null) {
       const segHeight = canvas.height / numSegments;
 
@@ -83,41 +106,48 @@ export default function Canvas({
 
       for (let i = 0; i < numSegments; i++) {
         if (i === segmentIndex) continue;
-        const yStart = segHeight * i;
-        ctx.fillRect(0, yStart, canvas.width, segHeight);
+        ctx.fillRect(0, segHeight * i, canvas.width, segHeight);
       }
 
       ctx.restore();
     }
   };
 
-  // When CLEAR happens → wipe strokes + redraw
+  // When CLEAR flag changes → wipe strokes + stickers
   useEffect(() => {
     strokesRef.current = [];
+    stickersRef.current = [];
     redraw();
   }, [clearFlag]);
 
-  // When segment changes → redraw to update highlight/mask
+  // Update redraw when section changes
   useEffect(() => {
     redraw();
   }, [segmentIndex, numSegments, revealed]);
 
-  // Incoming strokes
+  // incoming strokes
   useEffect(() => {
     const handleDraw = (data) => {
       strokesRef.current.push(data);
       redraw();
     };
-
     socket.on("draw", handleDraw);
     return () => socket.off("draw", handleDraw);
   }, []);
 
-  // Local drawing
+  // --- DRAWING WITH MOUSE ---
   const startDrawing = (e) => {
     const { offsetX, offsetY } = e.nativeEvent;
-    const bounds = getSegmentBounds();
 
+    // FIRST check if clicking a sticker
+    for (const s of stickersRef.current) {
+      if (Math.abs(offsetX - s.x) < 40 && Math.abs(offsetY - s.y) < 40) {
+        setDraggingSticker(s.id);
+        return;
+      }
+    }
+
+    const bounds = getSegmentBounds();
     if (!revealed && bounds) {
       if (offsetY < bounds.yStart || offsetY > bounds.yEnd) return;
     }
@@ -127,14 +157,28 @@ export default function Canvas({
   };
 
   const stopDrawing = () => {
+    setDraggingSticker(null);
     setIsDrawing(false);
     setPrevPos(null);
   };
 
-  const draw = (e) => {
+  const move = (e) => {
+    const { offsetX, offsetY } = e.nativeEvent;
+
+    // DRAGGING STICKERS
+    if (draggingSticker) {
+      const st = stickersRef.current.find((s) => s.id === draggingSticker);
+      if (st) {
+        st.x = offsetX;
+        st.y = offsetY;
+        redraw();
+      }
+      return;
+    }
+
+    // DRAWING
     if (!isDrawing || !prevPos) return;
 
-    const { offsetX, offsetY } = e.nativeEvent;
     const bounds = getSegmentBounds();
     if (!revealed && bounds) {
       if (offsetY < bounds.yStart || offsetY > bounds.yEnd) return;
@@ -149,11 +193,8 @@ export default function Canvas({
       size: brushSize,
     };
 
-    // Store locally and redraw
     strokesRef.current.push(stroke);
     redraw();
-
-    // Emit to others
     socket.emit("draw", stroke);
 
     setPrevPos({ x: offsetX, y: offsetY });
@@ -165,13 +206,15 @@ export default function Canvas({
       onMouseDown={startDrawing}
       onMouseUp={stopDrawing}
       onMouseLeave={stopDrawing}
-      onMouseMove={draw}
+      onMouseMove={move}
       style={{
         border: "1px solid #999",
-        cursor: "crosshair",
+        cursor: draggingSticker ? "grabbing" : "crosshair",
         display: "block",
         margin: "0 auto",
       }}
     />
   );
-}
+});
+
+export default Canvas;
