@@ -1,25 +1,30 @@
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import { socket } from "../socket.js";
 
 const Canvas = forwardRef(function Canvas(
   { brushColor, brushSize, segmentIndex, numSegments, revealed, clearFlag },
   ref
 ) {
-
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
 
   const [isDrawing, setIsDrawing] = useState(false);
   const [prevPos, setPrevPos] = useState(null);
 
-  // strokes + stickers stored locally
+  // store everything drawn
   const strokesRef = useRef([]);
   const stickersRef = useRef([]);
 
-  // dragging state
+  // dragging stickers
   const [draggingSticker, setDraggingSticker] = useState(null);
 
-  // expose addSticker() to parent (App.jsx)
+  // allow App to call addSticker()
   useImperativeHandle(ref, () => ({
     addSticker: (src) => {
       stickersRef.current.push({
@@ -29,10 +34,10 @@ const Canvas = forwardRef(function Canvas(
         y: 80,
       });
       redraw();
-    }
+    },
   }));
 
-  // Setup canvas once
+  // setup canvas once
   useEffect(() => {
     const canvas = canvasRef.current;
     canvas.width = window.innerWidth * 0.4;
@@ -41,11 +46,10 @@ const Canvas = forwardRef(function Canvas(
     const ctx = canvas.getContext("2d");
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
-
     ctxRef.current = ctx;
   }, []);
 
-  // decides where user can draw
+  // define your assigned vertical slice
   const getSegmentBounds = () => {
     const canvas = canvasRef.current;
     if (!canvas || segmentIndex == null || !numSegments) return null;
@@ -55,16 +59,20 @@ const Canvas = forwardRef(function Canvas(
     return { yStart, yEnd: yStart + segHeight };
   };
 
-  // redraw everything
   const redraw = () => {
     const canvas = canvasRef.current;
     const ctx = ctxRef.current;
     if (!canvas || !ctx) return;
-
+  
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // --- 1. DRAW ALL STROKES ---
+  
+    const segHeight = canvas.height / numSegments;
+    const myYStart = segHeight * segmentIndex;
+  
+    // --- 1. DRAW ONLY STROKES unless revealed ---
     strokesRef.current.forEach((s) => {
+      if (!revealed && s.segment !== segmentIndex) return;
+  
       ctx.strokeStyle = s.color;
       ctx.lineWidth = s.size;
       ctx.beginPath();
@@ -72,7 +80,7 @@ const Canvas = forwardRef(function Canvas(
       ctx.lineTo(s.x2, s.y2);
       ctx.stroke();
     });
-
+  
     // --- 2. DRAW STICKERS ---
     stickersRef.current.forEach((sticker) => {
       const img = new Image();
@@ -81,65 +89,59 @@ const Canvas = forwardRef(function Canvas(
         ctx.drawImage(img, sticker.x - 40, sticker.y - 40, 80, 80);
       };
     });
-
-    // --- 3. HIGHLIGHT SECTION ---
-    if (!revealed && segmentIndex != null) {
-      const segHeight = canvas.height / numSegments;
-      const yStart = segHeight * segmentIndex;
-
-      ctx.save();
-      ctx.fillStyle = "rgba(233, 231, 231, 0.25)";
-      ctx.fillRect(0, yStart, canvas.width, segHeight);
-
-      ctx.strokeStyle = "rgb(186, 186, 156)";
-      ctx.lineWidth = 4;
-      ctx.strokeRect(0, yStart, canvas.width, segHeight);
-      ctx.restore();
-    }
-
-    // --- 4. MASK OTHER SECTIONS ---
-    if (!revealed && segmentIndex != null) {
-      const segHeight = canvas.height / numSegments;
-
+  
+    // --- 3. MASK OTHER SECTIONS ---
+    if (!revealed) {
       ctx.save();
       ctx.fillStyle = "white";
-
       for (let i = 0; i < numSegments; i++) {
         if (i === segmentIndex) continue;
         ctx.fillRect(0, segHeight * i, canvas.width, segHeight);
       }
-
+      ctx.restore();
+    }
+  
+    // --- 4. DRAW HIGHLIGHT BOX LAST ---
+    if (!revealed) {
+      ctx.save();
+      ctx.fillStyle = "rgba(233, 231, 231, 0.25)";
+      ctx.fillRect(0, myYStart, canvas.width, segHeight);
+  
+      ctx.strokeStyle = "rgb(186, 186, 156)";
+      ctx.lineWidth = 4;
+      ctx.strokeRect(0, myYStart, canvas.width, segHeight);
       ctx.restore();
     }
   };
 
-  // When CLEAR flag changes → wipe strokes + stickers
+  // clear
   useEffect(() => {
     strokesRef.current = [];
     stickersRef.current = [];
     redraw();
   }, [clearFlag]);
 
-  // Update redraw when section changes
+  // segment changes → update highlight/mask
   useEffect(() => {
     redraw();
   }, [segmentIndex, numSegments, revealed]);
 
-  // incoming strokes
+  // receive strokes from others
   useEffect(() => {
     const handleDraw = (data) => {
       strokesRef.current.push(data);
       redraw();
     };
+
     socket.on("draw", handleDraw);
     return () => socket.off("draw", handleDraw);
   }, []);
 
-  // --- DRAWING WITH MOUSE ---
+
   const startDrawing = (e) => {
     const { offsetX, offsetY } = e.nativeEvent;
 
-    // FIRST check if clicking a sticker
+    // check if clicking a sticker first
     for (const s of stickersRef.current) {
       if (Math.abs(offsetX - s.x) < 40 && Math.abs(offsetY - s.y) < 40) {
         setDraggingSticker(s.id);
@@ -147,6 +149,7 @@ const Canvas = forwardRef(function Canvas(
       }
     }
 
+    // segment restriction
     const bounds = getSegmentBounds();
     if (!revealed && bounds) {
       if (offsetY < bounds.yStart || offsetY > bounds.yEnd) return;
@@ -165,7 +168,7 @@ const Canvas = forwardRef(function Canvas(
   const move = (e) => {
     const { offsetX, offsetY } = e.nativeEvent;
 
-    // DRAGGING STICKERS
+    // --- dragging stickers ---
     if (draggingSticker) {
       const st = stickersRef.current.find((s) => s.id === draggingSticker);
       if (st) {
@@ -176,7 +179,7 @@ const Canvas = forwardRef(function Canvas(
       return;
     }
 
-    // DRAWING
+    // --- drawing strokes ---
     if (!isDrawing || !prevPos) return;
 
     const bounds = getSegmentBounds();
@@ -184,6 +187,7 @@ const Canvas = forwardRef(function Canvas(
       if (offsetY < bounds.yStart || offsetY > bounds.yEnd) return;
     }
 
+    // attach `segment` to stroke so it knows where it belongs
     const stroke = {
       x1: prevPos.x,
       y1: prevPos.y,
@@ -191,6 +195,7 @@ const Canvas = forwardRef(function Canvas(
       y2: offsetY,
       color: brushColor,
       size: brushSize,
+      segment: segmentIndex, // 
     };
 
     strokesRef.current.push(stroke);

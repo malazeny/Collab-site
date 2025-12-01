@@ -1,16 +1,20 @@
+import { Server } from "socket.io";
 import express from "express";
 import http from "http";
-import { Server } from "socket.io";
 
 const app = express();
 const server = http.createServer(app);
 
-const io = new Server(server, {
-    cors: {
-      origin: "*",
-      methods: ["GET", "POST"],
-    },
+app.get("/", (req, res) => {
+    res.send("Socket server running");
   });
+
+const io = new Server(server, {
+  cors: {
+    origin: ["https://collab-site.onrender.com", "http://localhost:5173"],
+    methods: ["GET", "POST"],
+  },
+});
 
 const MAX_SEGMENTS = 3;
 let activeSegments = new Set();
